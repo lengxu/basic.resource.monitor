@@ -54,6 +54,8 @@ public class ResourceController {
             return JSON.toJSONString(ResultExceptionJson.paramNotNull());
         }
         LinkedHashMap<String, HashMap> result = new LinkedHashMap<>();
+        //由于这里使用率多线程，因此单纯通过linkedhashmap不能保证返回的数据是按照前台传递的ip进行排序的
+        LinkedHashMap<String, HashMap> sequencerResult = new LinkedHashMap<>();
         ExecutorService cachedThreadPool = Executors.newCachedThreadPool();
         for (String ip : ips) {
             cachedThreadPool.execute(new Runnable() {
@@ -77,13 +79,13 @@ public class ResourceController {
                     indictors.put("host_state", online_state);
                     indictors.put("process", process);
                     indictors.put("disk_pctUsage", disk_pctUsage);
-                    if ((cpu_pctUsage + "").contains("point=0") || (mem_pctUsage + "").toString().contains("point=0") || online_state == 0 || StringUtils.isNotBlank((String) process) && "0".equals(process) || "0".equals(disk_pctUsage)) {
+                    if ((cpu_pctUsage + "").contains("point=0") || (mem_pctUsage + "").toString().contains("point=0") || online_state == 0 || "0".equals(process + "") || "0".equals(disk_pctUsage + "")) {
                         //首先判断各个指标状态种是否有红色，如果有则总状态为红色，没有则跳过检查黄颜色
                         indictors.put("mainState", 0);
                     } else if ((cpu_pctUsage + "").contains("point=2") || (mem_pctUsage + "").contains("point=2")) {
                         //由于上面已经判断完红色了，这里黄颜色作为第二优先级进行判断，如果存在则总状态显示黄色，否则继续坚持绿色
                         indictors.put("mainState", 2);
-                    } else if ((cpu_pctUsage + "").contains("point=1") || (mem_pctUsage + "").contains("point=1") || online_state == 1 || "1".equals(process) || "1".equals(disk_pctUsage)) {
+                    } else if ((cpu_pctUsage + "").contains("point=1") || (mem_pctUsage + "").contains("point=1") || online_state == 1 || "1".equals(process + "") || "1".equals(disk_pctUsage + "")) {
                         //判断第三优先级绿色
                         indictors.put("mainState", 1);
                     } else {
@@ -100,7 +102,10 @@ public class ResourceController {
             if (cachedThreadPool.isTerminated()) {
                 long endTime = System.currentTimeMillis();
                 System.out.println("共耗时：" + (endTime - currentTime));
-                return JSON.toJSONString(result);
+                for (String ip : ips) {
+                    sequencerResult.put(ip, result.get(ip));
+                }
+                return JSON.toJSONString(sequencerResult);
             }
         }
     }
