@@ -1,6 +1,8 @@
 package cn.uyun.service.impl;
 
 import cn.uyun.bean.ResourceParam;
+import cn.uyun.bean.StoreResource;
+import cn.uyun.bean.StoreResourceA;
 import cn.uyun.service.ResourceQueryService;
 import cn.uyun.utils.DateTool;
 import com.alibaba.fastjson.JSON;
@@ -30,7 +32,8 @@ public class ResourceServiceImpl {
     private HashMap<String, HashMap<String, Object>> time = new HashMap<>();
     private HashMap<String, String> tags = new HashMap<>();
     private HashMap<String, ArrayList<String>> group_by = new HashMap<>();
-    private static final Long miniteInterval = 601000L;   //10分钟,store文档上写的默认单位为秒，实际测试为毫秒.多设置1ms是为了防止汇聚粒度=结束时间-开始时间偶尔会出现返回多个指标的情况
+    private static final Long miniteInterval = 600000L;   //10分钟,store文档上写的默认单位为秒，实际测试为毫秒.多设置1ms是为了防止汇聚粒度=结束时间-开始时间偶尔会出现返回多个指标的情况
+    private static final Long network = 601000L;   //10分钟,store文档上写的默认单位为秒，实际测试为毫秒.多设置1ms是为了防止汇聚粒度=结束时间-开始时间偶尔会出现返回多个指标的情况
     private static final Long dayInterval = 86400000L;   //10分钟,store文档上写的默认单位为秒，实际测试为毫秒
     private static final long threshold1 = Double.doubleToLongBits(80);   //一级阈值 小于一级阈值为1
     private static final long threshold2 = Double.doubleToLongBits(95);  //二级阈值   一级阈值到二级阈值之间为2， 大于一级阈值为3
@@ -45,7 +48,7 @@ public class ResourceServiceImpl {
     *@return:
     */
     public String querySystemInfo(String ip){
-        String resourceId = queryResourceId(ip, "id");
+        String resourceId = queryResourceId(ip);
         String info = resourceQueryService.systemInfoQuery(apiKey, resourceId);
         return info;
     }
@@ -55,8 +58,16 @@ public class ResourceServiceImpl {
      * @Param: ip
      * @return: true或者false
      */
-    public String queryHostState(String ip) {
-        return queryResourceId(ip,"online_state");
+    public int queryHostState(String ip) {
+        String resourceId = queryResourceId(ip);
+        String str = resourceQueryService.queryHostOnlineState(apiKey, "object.available", resourceId);
+        try {
+            JSONObject jsonObject = JSONObject.parseObject(str);
+            String value = jsonObject.get("value")+"";
+            return "on".equals(value) ? 1 : 0;
+        }catch (Exception e){
+            return -1;
+        }
     }
 
     /**
@@ -64,12 +75,35 @@ public class ResourceServiceImpl {
     *@Param:
     *@return:
     */
-    public String queryResourceId(String ip, String key){
-        String result = resourceQueryService.hostStateQuery(apiKey, ip);
-        System.out.println(result);
-        JSONArray jsonArray = JSON.parseArray(result);
-        JSONObject jsonObject = JSON.parseObject(jsonArray.get(0).toString());
-        String val = jsonObject.get(key).toString();
+    public String queryResourceId(String ip){
+        StoreResource storeResource = new StoreResource();
+        ArrayList conditions = storeResource.getConditions();
+        StoreResourceA condit1 = new StoreResourceA();
+        condit1.setField("ip");
+        condit1.setValue(ip);
+        conditions.add(condit1);
+        HashMap map = new HashMap();
+        map.put("cjt", "OR");
+        ArrayList arrayList = new ArrayList();
+        StoreResourceA condit2 = new StoreResourceA();
+        condit2.setField("classCode");
+        condit2.setValue("VM");
+        StoreResourceA condit3 = new StoreResourceA();
+        condit3.setField("classCode");
+        condit3.setValue("PCServer");
+        arrayList.add(condit2);
+        arrayList.add(condit3);
+        map.put("items", arrayList);
+        conditions.add(map);
+        String result = resourceQueryService.queryResourceIdByIp(apiKey, storeResource);
+        JSONObject object = JSONObject.parseObject(result);
+        if(Integer.valueOf(object.get("totalRecords")+"") != 1){
+            logger.error("查询的ip存在多台机器，请排查！");
+            return null;
+        }
+        JSONArray dataList = JSONArray.parseArray(object.get("dataList") + "");
+        JSONObject jsonObject = JSONObject.parseObject(dataList.get(0)+"");
+        String val = jsonObject.get("id").toString();
         return val;
     }
 
@@ -167,7 +201,7 @@ public class ResourceServiceImpl {
         long interval = detail ? dayInterval : miniteInterval;
         map.put("start", currentTime - interval);
         map.put("end", currentTime);
-        map.put("interval", miniteInterval);
+        map.put("interval", code.startsWith("system.net.bytes_") ? network : miniteInterval);
         map.put("aggregator", aggregator);
         resourceParam.setTime(map);
 

@@ -67,8 +67,7 @@ public class ResourceController {
                     //查询内存使用率-system.mem.pct_usage
                     Object mem_pctUsage = resourceServiceImpl.queryMemInfo(ip, currentTime, false);
                     //查询网络
-                    String str = resourceServiceImpl.queryHostState(ip);
-                    int online_state = StringUtils.isBlank(str) ? -1 : ("true".equals(str) ? 1 : 0);
+                    int online_state = resourceServiceImpl.queryHostState(ip);
 
                     //查询进程-system.processes.status
                     Object process = resourceServiceImpl.queryProcessInfo(ip, currentTime, false);
