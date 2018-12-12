@@ -150,9 +150,4 @@ public class ResourceController {
         }
         return JSON.toJSONString(result);
     }
-
-    public static void main(String[] args) {
-        String s = String.valueOf(null);
-        System.out.println(s);
-    }
 }

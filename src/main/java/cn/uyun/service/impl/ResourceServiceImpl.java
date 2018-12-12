@@ -373,7 +373,6 @@ public class ResourceServiceImpl {
                         String key = entry.getKey();
                         String val = entry.getValue().toString();   //kb
                         String device = groups.get("device").toString();
-                        System.out.println("val:"+val);
                         m.put("point", type.equals("disk_free") ? kb2gb(val) : val);
                         m.put("time", DateTool.dateToString(new Date(object2Bigdecimal(key).longValue()), "yyyy-MM-dd HH:mm:ss"));
                         map.put(device, m);
