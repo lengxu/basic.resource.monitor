@@ -2,6 +2,7 @@ package cn.uyun.bean;
 
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 
 import java.util.*;
 
@@ -14,6 +15,7 @@ import java.util.*;
  */
 @Setter
 @Getter
+@ToString
 public class ResourceParam {
 	public String ip;
 

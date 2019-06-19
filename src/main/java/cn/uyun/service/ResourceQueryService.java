@@ -10,7 +10,8 @@ import org.springframework.web.bind.annotation.*;
  * @author wuhan
  * @date 2018年11月08日 上午9:33:15
  */
-@FeignClient(name = "basicResourceMonitor",url = "http://master.cma.cn")
+//@FeignClient(name = "basicResourceMonitor",url = "http://master.cma.cn")
+@FeignClient(name = "basicResourceMonitor",url = "http://smart-view.nmic.cma")
 public interface ResourceQueryService {
 
     /**

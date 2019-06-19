@@ -15,10 +15,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * @author wuhan
@@ -58,16 +65,94 @@ public class ResourceServiceImpl {
      * @Param: ip
      * @return: true或者false
      */
-    public int queryHostState(String ip) {
-        String resourceId = queryResourceId(ip);
-        String str = resourceQueryService.queryHostOnlineState(apiKey, "object.available", resourceId);
+    public synchronized Map queryHostState(String ip) {
+//        String resourceId = queryResourceId(ip);
+        //由于store的object.available指标不准，这里通过ping命令去查询主机在线状态。
+        //String str = resourceQueryService.queryHostOnlineState(apiKey, "object.available", resourceId);
         try {
-            JSONObject jsonObject = JSONObject.parseObject(str);
-            String value = jsonObject.get("value")+"";
-            return "on".equals(value) ? 1 : 0;
+//            JSONObject jsonObject = JSONObject.parseObject(str);
+//            String value = jsonObject.get("value")+"";
+            boolean result = checkServerOnline(ip);
+            HashMap map = new HashMap();
+            if(result){
+                //上线
+                map.put("point", 1);
+                map.put("val", "上线");
+            }else {
+                //下线
+                map.put("point", 0);
+                map.put("val", "下线");
+            }
+            return map;
         }catch (Exception e){
-            return -1;
+            return null;
         }
+    }
+
+    private static final int port = 22;
+
+    /*
+     * 通过socket22端口查询主机是否在线
+     * num: 执行ping命令的次数，默认值5
+     * timeOut：超时时间,单位，毫秒, 默认值10ms
+     * */
+    public static boolean checkServerOnline(String ip){
+        return socketCmd(ip) || pingCmd(ip, 5, 1);
+    }
+
+    /*
+     * 通过ping命令查询主机是否在线
+     * num: 执行ping命令的次数，默认值5
+     * timeOut：超时时间,单位，毫秒, 默认值10ms
+     * */
+    public static boolean pingCmd(String ip, int num, int timeOut){
+        long startTime = System.currentTimeMillis();
+        boolean result = false;
+        String command = "ping " + ip + " -n " + num + " -w " + timeOut;
+        try {
+            Process process = Runtime.getRuntime().exec(command);
+            BufferedReader in = new BufferedReader(new InputStreamReader(process.getInputStream(), "gbk"));
+            String line;
+            int checkResult = 0;
+            while((line = in.readLine()) != null){
+                checkResult = getCheckResult(line);
+            }
+            result = (checkResult == num);
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+        long endTime = System.currentTimeMillis();
+        System.out.println("耗时：" + (endTime - startTime));
+        return result;
+    }
+
+    private static int getCheckResult(String line) {
+        Pattern pattern = Pattern.compile("(\\d+ms)(\\s+)(TTL=\\d+)",    Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(line);
+        while (matcher.find()) {
+            return 1;
+        }
+        return 0;
+    }
+
+
+    public static boolean socketCmd(String ip){
+        Socket socket = new Socket();
+        try {
+            socket.connect(new InetSocketAddress(ip, port), 10);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        } finally {
+            if(socket.isConnected()){
+                try {
+                    socket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return true;
     }
 
     /**
@@ -112,7 +197,7 @@ public class ResourceServiceImpl {
      * @Param:
      * @return:
      */
-    public Object queryCpuInfo(String ip, Long currentTime, boolean detail) {
+    public synchronized Object queryCpuInfo(String ip, Long currentTime, boolean detail) {
         if(detail){
             //查询cpu的系统和用户使用率 TODO cpu详情
             HashMap result = new HashMap();
@@ -122,7 +207,7 @@ public class ResourceServiceImpl {
             result.put("system.cpu.system", system);
             return result;
         }else {
-            return queryPandect(ip, currentTime, "system.cpu.pct_usage", "last", null, "cpu");
+            return queryPandect(ip, currentTime, "system.cpu.pct_usage", "avg", null, "cpu");
         }
     }
 
@@ -131,12 +216,12 @@ public class ResourceServiceImpl {
      * @Param: 平均使用率
      * @return:
      */
-    public Object queryMemInfo(String ip, Long currentTime, boolean detail) {
+    public synchronized Object queryMemInfo(String ip, Long currentTime, boolean detail) {
         if(detail){
             //查询内存使用率
             return queryDetail(ip, currentTime, "system.mem.pct_usage", "avg", null, "mem");
         }else {
-            return queryPandect(ip, currentTime, "system.mem.pct_usage", "last", null, "mem");
+            return queryPandect(ip, currentTime, "system.mem.pct_usage", "avg", null, "mem");
         }
     }
 
@@ -145,7 +230,7 @@ public class ResourceServiceImpl {
      *@Param:
      *@return:
      */
-    public Object queryNetwork(String ip, Long currentTime, boolean detail){
+    public synchronized Object queryNetwork(String ip, Long currentTime, boolean detail){
         HashMap result = new HashMap();
         Object rceive = queryDetail(ip, currentTime, "system.net.bytes_rcvd", "avg", null, "network");
         Object send = queryDetail(ip, currentTime, "system.net.bytes_sent", "avg", null, "network");
@@ -159,7 +244,7 @@ public class ResourceServiceImpl {
      * @Param: disk_free：磁盘使用量、disk_pctUsage：磁盘使用率
      * @return:
      */
-    public Object queryDiskInfo(String ip, Long currentTime, boolean detail, String type) {
+    public synchronized Object queryDiskInfo(String ip, Long currentTime, boolean detail, String type) {
         //String indictor = type != null && type.equals("disk_free") ? "system.disk.free" : "system.disk.pct_usage";
         if(detail){
             if(type.equals("disk_free")){
@@ -180,7 +265,7 @@ public class ResourceServiceImpl {
      * @return: -1 store接口返回内容为空
      * 1:存活。0异常
      */
-    public Object queryProcessInfo(String ip, Long currentTime, boolean detail) {
+    public synchronized Object queryProcessInfo(String ip, Long currentTime, boolean detail) {
         if(detail){
             return queryDetail(ip, currentTime, "system.processes.status", "last", "process_name", "process");
         }else {
@@ -223,81 +308,79 @@ public class ResourceServiceImpl {
      * @return:
      */
     public Object queryPandect(String ip, Long currentTime, String indictorCode, String aggregator, String groupBy_tag, String type) {
-        Object obj = null;
+        HashMap<String, Object> map = new HashMap<>();
+        int point = -1;
+        String str = "无数据";
+        map.put("point", point);
+        map.put("val", str);
         try {
             ResourceParam resourceParam = generateParam(indictorCode, ip, currentTime, aggregator, groupBy_tag, false);
             String result = resourceQueryService.indictorQuery(apiKey, resourceParam);
             JSONArray jsonArray = JSON.parseArray(result);
-            HashMap<String, Object> map = new HashMap<>();
-            ArrayList<HashMap<String, Object>> arrayList = new ArrayList<>();
-            String point = "-1";
             for (int i = 0; i < jsonArray.size(); i++) {    //cpu和内存只会循环一次，进程和磁盘会循环多次
                 JSONObject jsonObject = JSON.parseObject(jsonArray.get(i).toString());
                 JSONObject groups = JSON.parseObject(jsonObject.get("group").toString());
-                if (groups.size() == 0) { //代表监控项为空
-                    logger.warn("ip为：" + ip + "的主机未监控 "+type);
-                    return null;
-                }
                 JSONObject points = JSON.parseObject(jsonObject.get("points").toString());
-                if (points.size() == 0) { //代表当前查询时间范围没有值
-                    if ("cpu".equals(type) || "mem".equals(type)) {
-                        map.put("point", "-1");
-                        continue;
-                    } else {
-                        return -1;
-                    }
+                if (groups.size() == 0 || points.size() == 0) { //代表监控项为空
+                    logger.warn("ip为：" + ip + "的主机当前时刻未采集到 "+type+"指标。ResourceParam = "+resourceParam.toString());
+                    return map;
                 }
                 Iterator<Map.Entry<String, Object>> iterator = points.entrySet().iterator();    //总览
                 Map.Entry<String, Object> next = iterator.next();
 
-                String str = next.getValue().toString();
+                str = next.getValue().toString();
+                Double valueOf = Double.valueOf(str);
+                long t = Double.doubleToLongBits(valueOf);
                 switch (type) {
                     case "process":
                         int val = Double.valueOf(str).intValue();
                         int newState = Double.valueOf(point).intValue();
                         newState = newState == -1 ? val : newState & val;
-                        point = String.valueOf(newState);
+                        point = newState;
 
                         if (i == jsonArray.size() - 1) {
                             //最后一条数据
-                            return point;
+                            map.put("point", point);
+                            map.put("val", "正常");
+                            return map;
                         }
                         break;
                     case "cpu":
                     case "mem":
-                        if (map.get("point") == null) {
-                            Double valueOf = Double.valueOf(str);
-                            //判断cpu的使用率是否超过阈值
-                            long t = Double.doubleToLongBits(valueOf);
-                            if (t < threshold1) {
-                                point = "1";
-                            } else if (t > threshold1 && t < threshold2) {
-                                point = "2";
-                            } else if (t > threshold2) {
-                                point = "0";
-                            }
+                        //判断cpu的使用率是否超过阈值
+                        if (t < threshold1) {
+                            point = 1;    //绿
+                        } else if (t > threshold1 && t < threshold2) {
+                            point = 2;    //橙
+                        } else if (t > threshold2) {
+                            point = 0;    //红
                         }
-                        map.put("val", str);
+                        map.put("val", str + "%");
                         map.put("point", point);
                         break;
                     case "disk":
-                        Double valueOf = Double.valueOf(str);
-                        //判断cpu的使用率是否超过阈值
-                        long t = Double.doubleToLongBits(valueOf);
-                        if (t > diskThreshold)
-                            return "0";
-                        if (i == jsonArray.size() - 1)
-                            return "1";
+                        //判断磁盘的使用率是否超过阈值
+                        if (t > diskThreshold){
+                            point = 0;
+                            str = "异常";
+                        }else{
+                            point = 1;
+                            str = "正常";
+                        }
+//                        if (i == jsonArray.size() - 1) {
+//                            point = 1;
+//                        }
+                        map.put("val", str);
+                        map.put("point", point);
                         break;
                     default:
                         break;
                 }
             }
-            obj = map;
         } catch (Exception e) {
             logger.error("获取 IP 为：" + ip + " 的" + type + "总览数据失败。");
         }
-        return obj;
+        return map;
     }
 
     /**
@@ -446,4 +529,5 @@ public class ResourceServiceImpl {
         }
         return "";
     }
+
 }

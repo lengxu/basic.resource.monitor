@@ -67,9 +67,8 @@ public class ResourceController {
                     Object cpu_pctUsage = resourceServiceImpl.queryCpuInfo(ip, currentTime, false);
                     //查询内存使用率-system.mem.pct_usage
                     Object mem_pctUsage = resourceServiceImpl.queryMemInfo(ip, currentTime, false);
-                    //查询网络
-                    int online_state = resourceServiceImpl.queryHostState(ip);
-
+                    //查询主机在线状态
+                    Object online_state = resourceServiceImpl.queryHostState(ip);
                     //查询进程-system.processes.status
                     Object process = resourceServiceImpl.queryProcessInfo(ip, currentTime, false);
                     //查询磁盘使用率-system.disk.pct_usage
@@ -79,18 +78,18 @@ public class ResourceController {
                     indictors.put("host_state", online_state);
                     indictors.put("process", process);
                     indictors.put("disk_pctUsage", disk_pctUsage);
-                    if ((cpu_pctUsage + "").contains("point=0") || (mem_pctUsage + "").toString().contains("point=0") || online_state == 0 || "0".equals(process + "") || "0".equals(disk_pctUsage + "")) {
+                    if ((cpu_pctUsage + "").contains("point=0") || (mem_pctUsage + "").contains("point=0") || (online_state + "").contains("point=0") || (process + "").contains("point=0") || (disk_pctUsage + "").contains("point=0")) {
                         //首先判断各个指标状态种是否有红色，如果有则总状态为红色，没有则跳过检查黄颜色
                         indictors.put("mainState", 0);
                     } else if ((cpu_pctUsage + "").contains("point=2") || (mem_pctUsage + "").contains("point=2")) {
                         //由于上面已经判断完红色了，这里黄颜色作为第二优先级进行判断，如果存在则总状态显示黄色，否则继续坚持绿色
                         indictors.put("mainState", 2);
-                    } else if ((cpu_pctUsage + "").contains("point=1") || (mem_pctUsage + "").contains("point=1") || online_state == 1 || "1".equals(process + "") || "1".equals(disk_pctUsage + "")) {
-                        //判断第三优先级绿色
-                        indictors.put("mainState", 1);
-                    } else {
-                        //当所有指标种即不包含红色、黄色、绿色，则说明说有指标都是灰色，则总状态为灰色
+                    } else if ((cpu_pctUsage + "").contains("point=-1") || (mem_pctUsage + "").contains("point=-1") || (online_state + "").contains("point=-1") || (process + "").contains("point=-1") || (disk_pctUsage + "").contains("point=-1")) {
+                        //判断第三优先级灰色
                         indictors.put("mainState", -1);
+                    } else {
+                        //当所有指标种即不包含红色、黄色、灰色，则说明说有指标都是绿色，则总状态为绿色
+                        indictors.put("mainState", 1);
                     }
                     result.put(ip, indictors);
                 }
