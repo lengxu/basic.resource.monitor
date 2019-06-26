@@ -66,13 +66,20 @@ public class ResourceServiceImpl {
      * @return: true或者false
      */
     public synchronized Map queryHostState(String ip) {
-//        String resourceId = queryResourceId(ip);
-        //由于store的object.available指标不准，这里通过ping命令去查询主机在线状态。
-        //String str = resourceQueryService.queryHostOnlineState(apiKey, "object.available", resourceId);
+        String resourceId = queryResourceId(ip);
+        //由于store的object.available指标存在返回未知的状态，这里通过socket 22端口或者ping命令去查询主机在线状态。
+        String str = resourceQueryService.queryHostOnlineState(apiKey, "object.available", resourceId);
         try {
-//            JSONObject jsonObject = JSONObject.parseObject(str);
-//            String value = jsonObject.get("value")+"";
-            boolean result = checkServerOnline(ip);
+            JSONObject jsonObject = JSONObject.parseObject(str);
+            String value = jsonObject.get("value")+"";
+            boolean result = false;
+            if("unknown".equals(value)){
+                result = checkServerOnline(ip);
+            }else if("on".equals(value)) {
+                result = true;
+            }else if("off".equals(value)){
+                result = false;
+            }
             HashMap map = new HashMap();
             if(result){
                 //上线
@@ -333,16 +340,18 @@ public class ResourceServiceImpl {
                 long t = Double.doubleToLongBits(valueOf);
                 switch (type) {
                     case "process":
-                        int val = Double.valueOf(str).intValue();
-                        int newState = Double.valueOf(point).intValue();
-                        newState = newState == -1 ? val : newState & val;
-                        point = newState;
+                        int val = Double.valueOf(str).intValue();   //1代表存活 0代表异常
+//                        int newState = Double.valueOf(point).intValue();
+//                        newState = newState == -1 ? val : newState & val;
+//                        point = newState;
 
-                        if (i == jsonArray.size() - 1) {
-                            //最后一条数据
-                            map.put("point", point);
-                            map.put("val", "正常");
+                        if (val == 0) {
+                            map.put("point", 0);
+                            map.put("val", "异常");
                             return map;
+                        }else{
+                            map.put("point", 1);
+                            map.put("val", "正常");
                         }
                         break;
                     case "cpu":
